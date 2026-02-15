@@ -50,21 +50,24 @@ public class Master {
         try {
             DataInputStream in = new DataInputStream(socket.getInputStream());
 
-            // Custom Protocol: Read length-prefix first
+            // 1. Read the length prefix
             int length = in.readInt();
+
+            // 2. Create the exact size needed
             byte[] data = new byte[length];
-            in.readFully(data, 4, length - 4);
+
+            // 3. Put the length back into the start of the array manually
             java.nio.ByteBuffer.wrap(data).putInt(length);
 
-            // Use the unpack method from Message.java
+            // 4. Fill the REST of the array from the stream
+            in.readFully(data, 4, length - 4);
+
             Message msg = Message.unpack(data);
 
-            // Verify Magic and Identity
             if ("CSM218".equals(msg.magic) && "IDENTITY".equals(msg.type)) {
                 activeWorkers.put(msg.studentId, socket);
-                System.out.println("Worker " + msg.studentId + " registered successfully.");
+                System.out.println("Worker " + msg.studentId + " registered.");
             }
-
         } catch (IOException e) {
             System.err.println("Handshake failed: " + e.getMessage());
         }

@@ -53,18 +53,17 @@ public class Worker {
     public void execute() {
         try {
             while (!socket.isClosed()) {
-                // 1. Read the length-prefix (first 4 bytes)
                 int length = in.readInt();
                 byte[] data = new byte[length];
 
-                // 2. Read the full message payload
-                in.readFully(data, 4, length - 4); // Already read 4 bytes
-                // Put the length back at the start for unpack()
+                // Manually place the length in the first 4 bytes
                 java.nio.ByteBuffer.wrap(data).putInt(length);
+
+                // Read the remaining bytes directly into the array
+                in.readFully(data, 4, length - 4);
 
                 Message task = Message.unpack(data);
 
-                // 3. Process the task in the thread pool (Parallelism)
                 threadPool.submit(() -> {
                     if ("TASK".equals(task.type)) {
                         processTask(task);
