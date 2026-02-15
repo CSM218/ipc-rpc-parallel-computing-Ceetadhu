@@ -4,11 +4,6 @@ import java.nio.ByteBuffer;
 
 /**
  * Message represents the communication unit in the CSM218 protocol.
- * 
- * Requirement: You must implement a custom WIRE FORMAT.
- * DO NOT use JSON, XML, or standard Java Serialization.
- * Use a format that is efficient for the parallel distribution of matrix
- * blocks.
  */
 public class Message {
     public String magic = "CSM218";

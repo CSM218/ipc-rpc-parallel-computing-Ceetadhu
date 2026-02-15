@@ -78,12 +78,11 @@ public class Worker {
 
     private void processTask(Message task) {
         // Simple matrix multiplication logic placeholder
-        // In a real lab, you'd multiply the bytes in task.payload
         Message result = new Message();
         result.messageType = 2; // Result
         result.type = "RESULT";
         result.studentId = task.studentId;
-        result.payload = task.payload; // For now, just echoing back
+        result.payload = task.payload;
 
         try {
             synchronized (out) {
