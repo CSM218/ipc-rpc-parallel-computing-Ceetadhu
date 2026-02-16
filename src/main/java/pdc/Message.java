@@ -1,108 +1,148 @@
 package pdc;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 
-/**
- * Message represents the communication unit in the CSM218 protocol.
- */
 public class Message {
-    public String magic = "CSM218";
-    public int version = 1;
-    public String type;
-    public int messageType;
-    public String studentId = "N02219780P";
+
+    public String magic;
+    public int version;
+
+    public byte messageType;
+    public String studentId;
+
     public String sender;
     public long timestamp;
     public byte[] payload;
 
+    public static final String MAGIC_STR = "CSM218";
+    public static final int MAGIC_INT = 0x43534D32; // "CSM2" marker
+    public static final short VERSION = 1;
+
+    // message types (simple codes)
+    public static final byte TYPE_HELLO = 1;
+    public static final byte TYPE_TASK = 2;
+    public static final byte TYPE_RESULT = 3;
+    public static final byte TYPE_HEARTBEAT = 4;
+    public static final byte TYPE_ERROR = 5;
+
     public Message() {
+        this.magic = MAGIC_STR;
+        this.version = VERSION;
+        this.timestamp = System.currentTimeMillis();
+        this.payload = new byte[0];
+        this.sender = "";
+        this.studentId = "";
+        this.messageType = 0;
     }
 
-    /**
-     * Converts the message to a byte stream for network transmission.
-     * Implements length-prefix framing to handle TCP stream boundaries.
-     */
     public byte[] pack() {
-        // Convert Strings to bytes
-        byte[] magicBytes = (magic != null) ? magic.getBytes() : new byte[0];
-        byte[] typeBytes = (type != null) ? type.getBytes() : new byte[0];
-        byte[] idBytes = (studentId != null) ? studentId.getBytes() : new byte[0];
-        byte[] senderBytes = (sender != null) ? sender.getBytes() : new byte[0];
-        byte[] pLoad = (payload != null) ? payload : new byte[0];
+        byte[] sid = encode(studentId);
+        byte[] snd = encode(sender);
+        byte[] pay = (payload == null) ? new byte[0] : payload;
 
-        // Total Size calculation:
-        // Header(4) + Magic(4+len) + Version(4) + Type(4+len) + Sender(4+len) +
-        // Timestamp(8) + Payload(4+len)
-        int totalSize = 4 + (4 + magicBytes.length) + 4 + (4 + typeBytes.length) + 4 + (4 + idBytes.length)
-                + (4 + senderBytes.length) + 8 + (4 + pLoad.length);
+        int frameLen = 4 +
+                2 +
+                1 +
+                8 +
+                2 + sid.length +
+                2 + snd.length +
+                4 + pay.length;
 
-        ByteBuffer buffer = ByteBuffer.allocate(totalSize);
+        ByteBuffer buf = ByteBuffer.allocate(4 + frameLen);
 
-        buffer.putInt(totalSize); // Total length header
-        buffer.putInt(magicBytes.length); // Magic length
-        buffer.put(magicBytes); // Magic data
-        buffer.putInt(version); // Version
-        buffer.putInt(typeBytes.length); // Type length
-        buffer.put(typeBytes); // Type data
-        buffer.putInt(messageType);
-        buffer.putInt(idBytes.length);
-        buffer.put(idBytes);
-        buffer.putInt(senderBytes.length); // Sender length
-        buffer.put(senderBytes); // Sender data
-        buffer.putLong(timestamp); // Timestamp
-        buffer.putInt(pLoad.length); // Payload length
-        buffer.put(pLoad); // Payload data
+        buf.putInt(frameLen);
+        buf.putInt(MAGIC_INT);
+        buf.putShort((short) (version & 0xFFFF));
+        buf.put(messageType);
+        buf.putLong(timestamp);
 
-        return buffer.array();
+        putWithLength(buf, sid);
+        putWithLength(buf, snd);
 
+        buf.putInt(pay.length);
+        buf.put(pay);
+
+        return buf.array();
     }
 
-    /**
-     * Reconstructing a Message from a byte stream.
-     */
     public static Message unpack(byte[] data) {
-        ByteBuffer buffer = ByteBuffer.wrap(data);
-        Message msg = new Message();
+        if (data == null || data.length < 4)
+            return null;
 
-        buffer.getInt(); // Read and skip total length header
+        try {
+            ByteBuffer buf = ByteBuffer.wrap(data);
 
-        // Read Magic
-        int mLen = buffer.getInt();
-        byte[] mBytes = new byte[mLen];
-        buffer.get(mBytes);
-        msg.magic = new String(mBytes);
+            int possibleLen = buf.getInt(0);
+            boolean hasPrefix = (data.length >= 8) && (buf.getInt(4) == MAGIC_INT);
 
-        msg.version = buffer.getInt();
+            if (hasPrefix) {
+                int required = 4 + possibleLen;
+                if (data.length < required)
+                    return null;
+                buf.position(4);
+            } else {
+                buf.position(0);
+            }
 
-        // Read Type
-        int tLen = buffer.getInt();
-        byte[] tBytes = new byte[tLen];
-        buffer.get(tBytes);
-        msg.type = new String(tBytes);
+            int magicInt = buf.getInt();
+            if (magicInt != MAGIC_INT)
+                return null;
 
-        msg.messageType = buffer.getInt();
+            Message m = new Message();
+            m.magic = MAGIC_STR;
 
-        int idLen = buffer.getInt();
-        byte[] idBytes = new byte[idLen];
-        buffer.get(idBytes);
-        msg.studentId = new String(idBytes);
+            m.version = buf.getShort() & 0xFFFF;
+            m.messageType = buf.get();
+            m.timestamp = buf.getLong();
 
-        // Read Sender
-        int sLen = buffer.getInt();
-        byte[] sBytes = new byte[sLen];
-        buffer.get(sBytes);
-        msg.sender = new String(sBytes);
+            m.studentId = readString(buf);
+            m.sender = readString(buf);
 
-        msg.timestamp = buffer.getLong();
+            int payloadLen = buf.getInt();
+            if (payloadLen < 0 || payloadLen > buf.remaining())
+                return null;
 
-        // Read Payload
-        int pLen = buffer.getInt();
-        byte[] pBytes = new byte[pLen];
-        buffer.get(pBytes);
-        msg.payload = pBytes;
+            m.payload = new byte[payloadLen];
+            buf.get(m.payload);
 
-        return msg;
+            return m;
 
+        } catch (Exception e) {
+            return null;
+        }
     }
 
+    public byte[] serialize() {
+        return pack();
+    }
+
+    public static Message deserialize(byte[] data) {
+        return unpack(data);
+    }
+
+    private static byte[] encode(String s) {
+        if (s == null)
+            return new byte[0];
+        return s.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static void putWithLength(ByteBuffer buf, byte[] b) {
+        if (b == null)
+            b = new byte[0];
+        buf.putShort((short) (b.length & 0xFFFF));
+        buf.put(b);
+    }
+
+    private static String readString(ByteBuffer buf) throws IOException {
+        if (buf.remaining() < 2)
+            throw new IOException();
+        int len = buf.getShort() & 0xFFFF;
+        if (len > buf.remaining())
+            throw new IOException();
+        byte[] b = new byte[len];
+        buf.get(b);
+        return new String(b, StandardCharsets.UTF_8);
+    }
 }
