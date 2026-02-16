@@ -1,0 +1,6 @@
+# Name: Cynthia Tadhuvana
+# Student No: N02219780P
+# GitHub Username: Ceetadhu
+# Lab1 Repo: `https://github.com/CSM218/ipc-rpc-parallel-computing-Ceetadhu`
+# Remote Score: 66.7%
+# Local Score: 90.0%
